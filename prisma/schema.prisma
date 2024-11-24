@@ -1,0 +1,112 @@
+// This is your Prisma schema file
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+generator zod {
+  provider = "zod-prisma-types"
+  output   = "../types/zod" // (optional) specify the output directory
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("MIGRATION_DATABASE_URL")
+}
+
+// For Clerk integration, we'll store minimal user info
+model User {
+  id            String    @id @default(cuid())
+  clerkUserId   String    @unique
+  email         String    @unique
+  name          String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  prds          PRD[]
+  comments      Comment[]
+}
+
+model PRD {
+  id                 String           @id @default(cuid())
+  title              String
+  projectDescription String          @db.Text
+  techStack          String[]
+  status            PrdStatus        @default(DRAFT)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  author            User             @relation(fields: [authorId], references: [id])
+  authorId          String
+  versions          Version[]
+  comments          Comment[]
+  sections          Section[]        // New: Structured sections of the PRD
+  
+  // The generated/current document content
+  currentContent    DocumentContent? // New: Current version of the document
+  
+  // Additional metadata
+  lastEditedAt      DateTime         @default(now())
+  pageCount         Int              @default(0)
+  isPublic          Boolean          @default(false)
+  
+  @@index([authorId])
+}
+
+// New: Model for storing document content
+model DocumentContent {
+  id              String    @id @default(cuid())
+  markdownContent String    @db.Text      // Stores the markdown content
+  htmlContent     String?   @db.Text      // Optional: Stored HTML version for faster rendering
+  prd             PRD       @relation(fields: [prdId], references: [id])
+  prdId           String    @unique       // One-to-one relationship with PRD
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// New: Model for structured sections of the PRD
+model Section {
+  id          String    @id @default(cuid())
+  title       String
+  order       Int
+  content     String    @db.Text
+  prd         PRD       @relation(fields: [prdId], references: [id])
+  prdId       String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([prdId])
+  @@unique([prdId, order])  // Ensure unique ordering within a PRD
+}
+
+model Version {
+  id              String    @id @default(cuid())
+  versionNumber   Int
+  content         String    @db.Text
+  markdownContent String    @db.Text    // New: Store markdown separately
+  createdAt       DateTime  @default(now())
+  prd             PRD       @relation(fields: [prdId], references: [id])
+  prdId           String
+  
+  @@index([prdId])
+  @@unique([prdId, versionNumber])
+}
+
+model Comment {
+  id        String    @id @default(cuid())
+  content   String    @db.Text
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  author    User      @relation(fields: [authorId], references: [id])
+  authorId  String
+  prd       PRD       @relation(fields: [prdId], references: [id])
+  prdId     String
+  
+  @@index([prdId])
+  @@index([authorId])
+}
+
+enum PrdStatus {
+  DRAFT
+  COMPLETED
+  ARCHIVED
+}
